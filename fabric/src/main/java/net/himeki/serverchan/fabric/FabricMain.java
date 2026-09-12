@@ -30,6 +30,8 @@ public class FabricMain implements ModInitializer {
     public void onInitialize() {
         // Initialize config using ConfigLib
         Path configDir = FabricLoader.getInstance().getConfigDir();
+        // Register the platform data directory (used by the SQLite long-term memory)
+        ServerChanCore.setDataDirectory(configDir.resolve("serverchan"));
         ServerChanConfigBase config = ConfigLoader.initialize(configDir);
 
         // Initialize the core with the base config

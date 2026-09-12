@@ -178,6 +178,9 @@ public class I18n {
             case "en_us":
             case "en_gb":
                 return "en_GB";
+            case "ru":
+            case "ru_ru":
+                return "ru_RU";
             case "ja":
             case "ja_jp":
                 return "ja_JP";
@@ -203,7 +206,9 @@ public class I18n {
         String localeString;
 
         // Map system locale to supported locale codes
-        if ("zh".equals(language)) {
+        if ("ru".equals(language)) {
+            localeString = "ru_RU"; // Russian
+        } else if ("zh".equals(language)) {
             if ("TW".equals(country) || "HK".equals(country) || "MO".equals(country)) {
                 localeString = "zh_TW"; // Traditional Chinese (not yet supported, will fallback)
             } else {

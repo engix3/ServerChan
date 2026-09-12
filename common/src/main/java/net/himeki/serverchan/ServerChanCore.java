@@ -4,13 +4,17 @@ import net.himeki.serverchan.config.ServerChanConfigBase;
 import net.himeki.serverchan.config.ConfigLoader;
 import net.himeki.serverchan.i18n.I18n;
 import net.himeki.serverchan.openai.OpenAIHandler;
+import net.himeki.serverchan.util.ChatFormat;
 import net.himeki.serverchan.util.KotlinReflectionWorkaround;
+import net.himeki.serverchan.util.MemoryManager;
+import net.himeki.serverchan.util.ServerInfoProvider;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -20,6 +24,7 @@ public class ServerChanCore {
     public static volatile ServerChanConfigBase CONFIG;
     private static MessageBroadcaster messageBroadcaster;
     private static CommandExecutor commandExecutor;
+    private static volatile ServerInfoProvider serverInfoProvider;
     private static volatile boolean enabled = true;
     public static final java.util.List<String> executedCommandsForTesting = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
@@ -38,10 +43,41 @@ public class ServerChanCore {
         // Update locale from config
         I18n.updateLocaleFromConfig(CONFIG.locale);
 
+        // Initialize the SQLite-backed long-term memory if enabled
+        if (CONFIG.memoryEnabled) {
+            MemoryManager.initialize(getDataDirectory());
+        }
+
         LOGGER.info(I18n.get("serverchan.startup"));
 
         // Initialize OpenAI
         OpenAIHandler.initializeOpenAI();
+    }
+
+    /**
+     * Data directory used by platform-independent subsystems (e.g. the memory database).
+     * Platforms that support it override this via {@link #setDataDirectory(java.nio.file.Path)}.
+     */
+    private static volatile java.nio.file.Path dataDirectory;
+    private static volatile boolean dataDirectoryResolved = false;
+
+    /**
+     * Set the platform data directory (e.g. plugins/ServerChan on Bukkit).
+     * Must be called before {@link #initialize(ServerChanConfigBase)}.
+     */
+    public static void setDataDirectory(java.nio.file.Path path) {
+        dataDirectory = path;
+        dataDirectoryResolved = true;
+    }
+
+    /**
+     * Get the platform data directory; falls back to the current working directory.
+     */
+    public static java.nio.file.Path getDataDirectory() {
+        if (dataDirectoryResolved && dataDirectory != null) {
+            return dataDirectory;
+        }
+        return java.nio.file.Paths.get("").toAbsolutePath();
     }
 
     /**
@@ -73,6 +109,28 @@ public class ServerChanCore {
     }
 
     /**
+     * Set the platform server info provider (used by the get_server_metrics tool)
+     */
+    public static void setServerInfoProvider(ServerInfoProvider provider) {
+        serverInfoProvider = provider;
+    }
+
+    /**
+     * Get the platform server info provider (may be null if the platform doesn't provide one)
+     */
+    public static ServerInfoProvider getServerInfoProvider() {
+        return serverInfoProvider;
+    }
+
+    /**
+     * Format a message the bot broadcasts: translate '&' codes to '§'
+     * and prepend the configurable bot prefix (without duplicating it).
+     */
+    public static String formatForChat(String message) {
+        return ChatFormat.formatBotMessage(message);
+    }
+
+    /**
      * Handle chat messages from players
      *
      * @param playerName Player's name
@@ -80,11 +138,23 @@ public class ServerChanCore {
      * @param permissionLevel The player's permission level
      */
     public static void onChatMessage(String playerName, String message, int permissionLevel) {
+        onChatMessage(null, playerName, message, permissionLevel);
+    }
+
+    /**
+     * Handle chat messages from players
+     *
+     * @param playerUuid Player's unique ID (used for long-term memory and metrics), may be null
+     * @param playerName Player's name
+     * @param message The chat message
+     * @param permissionLevel The player's permission level
+     */
+    public static void onChatMessage(UUID playerUuid, String playerName, String message, int permissionLevel) {
         if (!enabled) {
             return;
         }
 
-        processAIResponseAsync(playerName, message, permissionLevel)
+        processAIResponseAsync(playerUuid, playerName, message, permissionLevel)
                 .thenAccept(response -> {
                     if (!enabled) {
                         return;
@@ -92,7 +162,7 @@ public class ServerChanCore {
 
                     // Only broadcast if AI decided to respond (response is not null or empty)
                     if (response != null && !response.isEmpty() && messageBroadcaster != null && messageBroadcaster.isReady()) {
-                        messageBroadcaster.broadcastMessage("§" + CONFIG.botColor + I18n.get("bot.name") + ": " + response);
+                        messageBroadcaster.broadcastMessage(formatForChat(response));
                     }
                 });
     }
@@ -143,7 +213,7 @@ public class ServerChanCore {
 
                 // Only broadcast if there's a valid response
                 if (enabled && aiResponse != null && !aiResponse.isEmpty() && messageBroadcaster != null && messageBroadcaster.isReady()) {
-                    messageBroadcaster.broadcastMessage("§" + CONFIG.botColor + I18n.get("bot.name") + ": " + aiResponse);
+                    messageBroadcaster.broadcastMessage(formatForChat(aiResponse));
                 }
             }, OpenAIHandler.getAsyncExecutor());
         } catch (RejectedExecutionException e) {
@@ -151,7 +221,7 @@ public class ServerChanCore {
         }
     }
 
-    private static CompletableFuture<String> processAIResponseAsync(String sender, String message, int permissionLevel) {
+    private static CompletableFuture<String> processAIResponseAsync(UUID playerUuid, String sender, String message, int permissionLevel) {
         try {
             return CompletableFuture.supplyAsync(() -> {
                 if (!enabled) {
@@ -169,7 +239,7 @@ public class ServerChanCore {
                 String formattedDateTime = zonedDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
                 String requestMessage = "[" + formattedDateTime + "] " + "<" + sender + ">: " + message;
 
-                String response = OpenAIHandler.getChatResponse(sender, requestMessage, permissionLevel);
+                String response = OpenAIHandler.getChatResponse(playerUuid, sender, requestMessage, permissionLevel);
 
                 if (!enabled) {
                     return null;
@@ -216,6 +286,7 @@ public class ServerChanCore {
     public static void shutdown() {
         enabled = false;
         OpenAIHandler.shutdown();
+        MemoryManager.shutdown();
     }
 
     /**

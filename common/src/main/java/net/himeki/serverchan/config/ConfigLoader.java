@@ -30,8 +30,9 @@ public class ConfigLoader {
 
         // Create config properties with custom settings
         YamlConfigurationProperties properties = YamlConfigurationProperties.newBuilder()
-                .header("ServerChan Configuration\n" +
-                        "AI-powered chat assistant for Minecraft servers\n\n" +
+                .header("ServerChan / Нейрона Configuration\n" +
+                        "AI-powered chat assistant for Minecraft servers\n" +
+                        "ИИ-помощница для Minecraft-серверов\n\n" +
                         "For more information, visit: https://github.com/himekifee/ServerChan")
                 .build();
 

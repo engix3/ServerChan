@@ -3,10 +3,17 @@ package net.himeki.serverchan.openai;
 import com.google.gson.*;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.JsonValue;
 import com.openai.models.ChatModel;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.FunctionParameters;
 import com.openai.models.chat.completions.*;
 import net.himeki.serverchan.ServerChanCore;
+import net.himeki.serverchan.config.ServerChanConfigBase;
 import net.himeki.serverchan.i18n.I18n;
+import net.himeki.serverchan.util.MemoryManager;
+import net.himeki.serverchan.util.SearXNGClient;
+import net.himeki.serverchan.util.ServerMetricsCollector;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -15,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class OpenAIHandler {
@@ -60,6 +68,11 @@ public class OpenAIHandler {
      * Initialize or reset everything at startup.
      */
     public static void initializeOpenAI() {
+        // One concise warning at startup/reload instead of stack traces on every request
+        if (!isApiKeyConfigured()) {
+            ServerChanCore.LOGGER.warn("OpenAI API key is not configured (openai.apiKey in serverchan.yml) - ServerChan will stay silent until a key is set");
+        }
+
         // Set reload flag to signal ongoing operations to stop
         reloadInProgress = true;
 
@@ -147,6 +160,15 @@ public class OpenAIHandler {
     }
 
     public static String getEventResponse(String sender, String input, int permissionLevel) {
+        // Game events have no player context - no UUID available for memory/metrics
+        return getEventResponse(null, sender, input, permissionLevel);
+    }
+
+    public static String getEventResponse(UUID senderUuid, String sender, String input, int permissionLevel) {
+        // No API key configured: stay silent instead of spamming 401 stack traces on every event
+        if (!isApiKeyConfigured()) {
+            return handleMissingApiKey(input);
+        }
         recordRequestException(null);
         // Check intention first if enabled (events are marked as game events)
         if (ServerChanCore.CONFIG.useIntentionChecker && ServerChanCore.CONFIG.useFastPathIntentionChecker) {
@@ -164,7 +186,7 @@ public class OpenAIHandler {
                         // Start response generation asynchronously
                         CompletableFuture.runAsync(() -> {
                             try {
-                                String result = getResponse(sender, input, permissionLevel);
+                                String result = getResponse(senderUuid, sender, input, permissionLevel);
                                 responseFuture.complete(result);
                             } catch (Exception e) {
                                 responseFuture.completeExceptionally(e);
@@ -200,7 +222,7 @@ public class OpenAIHandler {
             }
 
             // Fallback if no early response was triggered (shouldn't happen with fast path)
-            return getResponse(sender, input, permissionLevel);
+            return getResponse(senderUuid, sender, input, permissionLevel);
 
         } else if (ServerChanCore.CONFIG.useIntentionChecker) {
             // Normal path without fast path
@@ -222,10 +244,19 @@ public class OpenAIHandler {
                 return "<|no_message_this_turn|>";
             }
         }
-        return getResponse(sender, input, permissionLevel);
+        return getResponse(senderUuid, sender, input, permissionLevel);
     }
 
     public static String getChatResponse(String sender, String input, int permissionLevel) {
+        // Backwards-compatible overload for platforms that don't track player UUIDs
+        return getChatResponse(null, sender, input, permissionLevel);
+    }
+
+    public static String getChatResponse(UUID senderUuid, String sender, String input, int permissionLevel) {
+        // No API key configured: stay silent instead of spamming 401 stack traces on every message
+        if (!isApiKeyConfigured()) {
+            return handleMissingApiKey(input);
+        }
         recordRequestException(null);
         // Check intention first if enabled (regular chat messages)
         if (ServerChanCore.CONFIG.useIntentionChecker && ServerChanCore.CONFIG.useFastPathIntentionChecker) {
@@ -243,7 +274,7 @@ public class OpenAIHandler {
                         // Start response generation asynchronously
                         CompletableFuture.runAsync(() -> {
                             try {
-                                String result = getResponse(sender, input, permissionLevel);
+                                String result = getResponse(senderUuid, sender, input, permissionLevel);
                                 responseFuture.complete(result);
                             } catch (Exception e) {
                                 responseFuture.completeExceptionally(e);
@@ -279,7 +310,7 @@ public class OpenAIHandler {
             }
 
             // Fallback if no early response was triggered (shouldn't happen with fast path)
-            return getResponse(sender, input, permissionLevel);
+            return getResponse(senderUuid, sender, input, permissionLevel);
 
         } else if (ServerChanCore.CONFIG.useIntentionChecker) {
             // Normal path without fast path
@@ -301,18 +332,68 @@ public class OpenAIHandler {
                 return "<|no_message_this_turn|>";
             }
         }
-        return getResponse(sender, input, permissionLevel);
+        return getResponse(senderUuid, sender, input, permissionLevel);
+    }
+
+    /**
+     * True when an OpenAI API key is configured (non-blank after trimming).
+     */
+    private static boolean isApiKeyConfigured() {
+        String key = ServerChanCore.CONFIG != null ? ServerChanCore.CONFIG.openaiApiKey : null;
+        return key != null && !key.trim().isEmpty();
+    }
+
+    /**
+     * Quiet fallback when no API key is configured: keeps the conversation context
+     * consistent (same as the "should not respond" path) and returns the no-message
+     * token so the bot stays silent instead of broadcasting errors.
+     */
+    private static String handleMissingApiKey(String input) {
+        if (!reloadInProgress) {
+            messageContext.add(MessageWrapper.user(input));
+            messageContext.add(MessageWrapper.assistant("<|no_message_this_turn|>"));
+        }
+        return "<|no_message_this_turn|>";
+    }
+
+    /** Logs 401 rejections loudly only once per session instead of a stack trace per request. */
+    private static final AtomicBoolean unauthorizedWarned = new AtomicBoolean(false);
+
+    private static boolean isUnauthorizedException(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof com.openai.errors.UnauthorizedException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     /**
      * Main method to get a response from OpenAI.
      * Will queue requests in a single thread, each with a 90s timeout.
      */
-    private static String getResponse(String sender, String input,
+    private static String getResponse(UUID senderUuid, String sender, String input,
                                       int permissionLevel) {
         // Always use the response generation system message
         // (IntentionChecker handles the decision logic separately when enabled)
         String systemMessage = ServerChanCore.CONFIG.responseGenerationSystemMessage;
+
+        // Fill in the admin name placeholder from the config
+        String adminName = ServerChanCore.CONFIG.botAdminName;
+        if (adminName != null && !adminName.trim().isEmpty()) {
+            systemMessage = systemMessage.replace(ServerChanConfigBase.ADMIN_NAME_PLACEHOLDER, adminName);
+        }
+
+        // Inject long-term memory facts about the current interlocutor into the system context
+        if (senderUuid != null && ServerChanCore.CONFIG.memoryEnabled) {
+            List<String> facts = MemoryManager.getFacts(senderUuid);
+            if (!facts.isEmpty()) {
+                systemMessage += "\n\n[Долговременная память об игроке " + sender + "]\n- "
+                        + String.join("\n- ", facts);
+            }
+        }
 
         // Append dev easter egg prompt if not disabled
         if (!ServerChanCore.CONFIG.disableDevEasterEgg) {
@@ -349,12 +430,12 @@ public class OpenAIHandler {
         }
 
         // Define function tools
-        addExecuteMinecraftCommandsTool(paramsBuilder);
+        addFunctionTools(paramsBuilder);
 
         // Create a callable that does the heavy lifting
         Callable<CompletionResult> task = () -> {
             try {
-                String response = processResponse(sender, paramsBuilder, permissionLevel);
+                String response = processResponse(senderUuid, sender, paramsBuilder, permissionLevel);
                 return new CompletionResult(response, null);
             } catch (Exception e) {
                 return new CompletionResult(null, e);
@@ -372,7 +453,16 @@ public class OpenAIHandler {
             // If an exception occurred in the worker
             if (result.error != null) {
                 recordRequestException(result.error);
-                ServerChanCore.LOGGER.error("Error in completion task", result.error);
+                if (isUnauthorizedException(result.error)) {
+                    // Wrong/missing key: one concise warning instead of a stack trace per request
+                    if (unauthorizedWarned.compareAndSet(false, true)) {
+                        ServerChanCore.LOGGER.warn("OpenAI rejected the API key (401 Unauthorized) - check openai.apiKey in serverchan.yml (further 401s are logged quietly)");
+                    } else {
+                        ServerChanCore.LOGGER.debug("OpenAI request rejected: 401 Unauthorized");
+                    }
+                } else {
+                    ServerChanCore.LOGGER.error("Error in completion task", result.error);
+                }
                 return I18n.get("handler.error.completion");
             }
 
@@ -421,7 +511,7 @@ public class OpenAIHandler {
      * We directly modify the same 'messages' list, so the entire conversation
      * remains in one place.
      */
-    private static String processResponse(String sender, ChatCompletionCreateParams.Builder paramsBuilder,
+    private static String processResponse(UUID senderUuid, String sender, ChatCompletionCreateParams.Builder paramsBuilder,
                                           int permissionLevel) {
         boolean functionCallExists = true;
         String finalResponse = null;
@@ -454,7 +544,7 @@ public class OpenAIHandler {
                     ChatCompletionMessageToolCall toolCall = toolCalls.get(i);
 
                     String toolCallId = "call_" + i; // Default fallback
-                    String functionName = "ExecuteMinecraftCommands"; // Default to our only function
+                    String functionName = "ExecuteMinecraftCommands"; // Default fallback
                     String functionArgsJson = "{}"; // Default empty JSON
 
                     // Extract function details from the API
@@ -475,23 +565,41 @@ public class OpenAIHandler {
                     }
 
                     String result;
-                    if ("ExecuteMinecraftCommands".equals(functionName)) {
-                        List<String> commands = parseCommandsFromJson(functionArgsJson);
-                        // Check permission based on config
-                        boolean canExecute = !ServerChanCore.CONFIG.inheritCmdSourcePermission || permissionLevel >= 4;
-                        result = canExecute
-                                ? executeCommands(sender, commands, permissionLevel)
-                                : I18n.get("handler.command.permission.denied");
+                    String normalizedFunctionName = functionName == null ? "" :
+                            functionName.toLowerCase(Locale.ROOT).replace("_", "").replace("-", "");
+                    switch (normalizedFunctionName) {
+                        case "executeminecraftcommands": {
+                            List<String> commands = parseCommandsFromJson(functionArgsJson);
+                            // Check permission based on config
+                            boolean canExecute = !ServerChanCore.CONFIG.inheritCmdSourcePermission || permissionLevel >= 4;
+                            result = canExecute
+                                    ? executeCommands(sender, commands, permissionLevel)
+                                    : I18n.get("handler.command.permission.denied");
 
-                        // IMPORTANT: if the user commands contain "serverchan reset", set a flag
-                        if (commands.stream().anyMatch(cmd -> {
-                            String cleanCmd = cmd.startsWith("/") ? cmd.substring(1) : cmd;
-                            return cleanCmd.equalsIgnoreCase("serverchan reset") || cleanCmd.equalsIgnoreCase("serverchan clear");
-                        })) {
-                            resetContextAfterThisRound = true;
+                            // IMPORTANT: if the user commands contain "serverchan reset", set a flag
+                            if (commands.stream().anyMatch(cmd -> {
+                                String cleanCmd = cmd.startsWith("/") ? cmd.substring(1) : cmd;
+                                return cleanCmd.equalsIgnoreCase("serverchan reset") || cleanCmd.equalsIgnoreCase("serverchan clear");
+                            })) {
+                                resetContextAfterThisRound = true;
+                            }
+                            break;
                         }
-                    } else {
-                        result = I18n.format("handler.function.unknown", functionName);
+                        case "getservermetrics": {
+                            result = ServerMetricsCollector.collect(senderUuid, sender);
+                            break;
+                        }
+                        case "websearch": {
+                            result = SearXNGClient.search(parseStringArg(functionArgsJson, "query"));
+                            break;
+                        }
+                        case "rememberfact": {
+                            result = handleRememberFact(senderUuid, sender, functionArgsJson);
+                            break;
+                        }
+                        default:
+                            result = I18n.format("handler.function.unknown", functionName);
+                            break;
                     }
 
                     // Add the tool's result as a new message with the function name
@@ -627,7 +735,28 @@ public class OpenAIHandler {
     }
 
     /**
-     * Execute a list of Minecraft commands as console.
+     * Parse a single string argument from a function call's JSON arguments.
+     * Returns an empty string when the field is missing or not a primitive.
+     */
+    private static String parseStringArg(String functionArgsJson, String field) {
+        try {
+            JsonElement element = parseJsonString(functionArgsJson);
+            JsonObject rootObject = element.getAsJsonObject();
+            JsonElement value = rootObject.get(field);
+            if (value != null && value.isJsonPrimitive()) {
+                return value.getAsString();
+            }
+        } catch (Exception e) {
+            ServerChanCore.LOGGER.error("Failed to parse '{}' from function arguments JSON", field, e);
+        }
+        return "";
+    }
+
+    /**
+     * Execute a list of Minecraft commands as console and return their captured
+     * console output to the model. The platform CommandExecutor is responsible
+     * for buffering the command feedback (custom buffered CommandSender);
+     * here we just assemble a readable ToolResult with status + output.
      */
     private static String executeCommands(String sender, List<String> commands, int permissionLevel) {
         StringBuilder resultBuilder = new StringBuilder();
@@ -643,22 +772,25 @@ public class OpenAIHandler {
                 String result = ServerChanCore.getCommandExecutor() != null ?
                         ServerChanCore.getCommandExecutor().executeCommand(cleanCommand, effectivePermissionLevel) :
                         "Command executor not initialized";
-                
+
                 // Track command for testing
                 ServerChanCore.executedCommandsForTesting.add(cleanCommand);
 
                 resultBuilder
                         .append(I18n.get("handler.command.log.command"))
+                        .append("/")
                         .append(cleanCommand)
                         .append("\n")
                         .append(I18n.get("handler.command.log.result"))
-                        .append(result)
+                        .append("\n")
+                        .append(result == null || result.trim().isEmpty() ? "(no output)" : result)
                         .append("\n\n");
 
                 // Broadcast the command execution message
                 if (ServerChanCore.getMessageBroadcaster() != null) {
                     ServerChanCore.getMessageBroadcaster().broadcastMessage(
-                            I18n.format("handler.command.broadcast", sender, cleanCommand)
+                            ServerChanCore.formatForChat(
+                                    I18n.format("handler.command.broadcast", sender, cleanCommand))
                     );
                 }
             } catch (Exception e) {
@@ -667,7 +799,43 @@ public class OpenAIHandler {
                         .append("\n\n");
             }
         }
-        return resultBuilder.toString();
+        String fullResult = resultBuilder.toString();
+        // The platform executor output may contain legacy '§' color codes - strip them for the LLM
+        return truncateForToolResult(fullResult);
+    }
+
+    /** Upper bound for a single tool result so huge outputs don't blow up the context window. */
+    private static final int MAX_TOOL_RESULT_LENGTH = 4000;
+
+    private static String truncateForToolResult(String result) {
+        String cleaned = net.himeki.serverchan.util.ChatFormat.stripColorCodes(result);
+        if (cleaned.length() <= MAX_TOOL_RESULT_LENGTH) {
+            return cleaned;
+        }
+        return cleaned.substring(0, MAX_TOOL_RESULT_LENGTH) + "\n... (output truncated, "
+                + cleaned.length() + " chars total)";
+    }
+
+    /**
+     * Handle the remember_fact tool call: store the fact in the SQLite long-term memory
+     * for the current conversation partner.
+     */
+    private static String handleRememberFact(UUID senderUuid, String sender, String functionArgsJson) {
+        if (!ServerChanCore.CONFIG.memoryEnabled) {
+            return "Long-term memory is disabled in the config";
+        }
+        if (senderUuid == null) {
+            return "Cannot remember facts: player UUID is unknown in this context";
+        }
+        String key = parseStringArg(functionArgsJson, "key");
+        String value = parseStringArg(functionArgsJson, "value");
+        if (key.trim().isEmpty()) {
+            return "Error: 'key' argument is required";
+        }
+        boolean saved = MemoryManager.rememberFact(senderUuid, sender, key, value);
+        return saved
+                ? "Fact saved to long-term memory: '" + key.trim() + "' = '" + value.trim() + "'"
+                : "Failed to save fact to long-term memory";
     }
 
     /**
@@ -703,14 +871,54 @@ public class OpenAIHandler {
     }
 
     /**
-     * Adds the 'execute_minecraft_commands' function tool to the builder.
+     * Adds all function tools available to the model.
      */
-    private static void addExecuteMinecraftCommandsTool(ChatCompletionCreateParams.Builder paramsBuilder) {
+    private static void addFunctionTools(ChatCompletionCreateParams.Builder paramsBuilder) {
         // Use the class-based approach for function definition
         try {
             paramsBuilder.addTool(ExecuteMinecraftCommands.class);
         } catch (Throwable t) {
             ServerChanCore.LOGGER.error("Failed to register ExecuteMinecraftCommands tool for structured outputs", t);
+        }
+        addGetServerMetricsTool(paramsBuilder);
+        try {
+            paramsBuilder.addTool(WebSearchTool.class);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.error("Failed to register WebSearchTool tool for structured outputs", t);
+        }
+        try {
+            paramsBuilder.addTool(RememberFactTool.class);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.error("Failed to register RememberFactTool tool for structured outputs", t);
+        }
+    }
+
+    /**
+     * Registers the get_server_metrics tool with an explicit empty-object schema.
+     * The class-based addTool() helper runs local schema validation that rejects
+     * schemas with zero properties, which this no-argument tool legitimately has.
+     */
+    private static void addGetServerMetricsTool(ChatCompletionCreateParams.Builder paramsBuilder) {
+        try {
+            FunctionParameters parameters = FunctionParameters.builder()
+                    .putAdditionalProperty("type", JsonValue.from("object"))
+                    .putAdditionalProperty("properties", JsonValue.from(new LinkedHashMap<String, Object>()))
+                    .putAdditionalProperty("required", JsonValue.from(new ArrayList<String>()))
+                    .putAdditionalProperty("additionalProperties", JsonValue.from(false))
+                    .build();
+
+            ChatCompletionFunctionTool tool = ChatCompletionFunctionTool.builder()
+                    .function(FunctionDefinition.builder()
+                            .name("get_server_metrics")
+                            .description("Get live server metrics: TPS (1m/5m/15m), online players, "
+                                    + "JVM memory usage and your ping. Takes no arguments.")
+                            .parameters(parameters)
+                            .build())
+                    .build();
+
+            paramsBuilder.addTool(tool);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.error("Failed to register get_server_metrics tool", t);
         }
     }
 

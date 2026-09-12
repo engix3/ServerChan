@@ -6,6 +6,7 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.RequestOptions;
 import com.openai.core.http.StreamResponse;
 import com.openai.errors.RateLimitException;
+import com.openai.errors.UnauthorizedException;
 import com.openai.models.ChatModel;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionChunk;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Dedicated intention checker that uses a smaller model to determine
@@ -222,9 +224,19 @@ public class IntentionChecker {
             if (isRateLimitException(e)) {
                 OpenAIHandler.recordRequestException(e);
             }
-            ServerChanCore.LOGGER.error("IntentionChecker: Error checking intention - type={}, message={}",
-                e.getClass().getSimpleName(), e.getMessage());
-            ServerChanCore.LOGGER.error(I18n.format("intention.check.error", sender, message), e);
+
+            if (isUnauthorizedException(e)) {
+                // Wrong/missing API key: one concise warning instead of a stack trace per message
+                if (unauthorizedWarned.compareAndSet(false, true)) {
+                    ServerChanCore.LOGGER.warn("Intention check skipped: API returned 401 Unauthorized - check openai.apiKey in serverchan.yml (further 401s are logged quietly)");
+                } else {
+                    ServerChanCore.LOGGER.debug("Intention check skipped: 401 Unauthorized");
+                }
+            } else {
+                ServerChanCore.LOGGER.error("IntentionChecker: Error checking intention - type={}, message={}",
+                    e.getClass().getSimpleName(), e.getMessage());
+                ServerChanCore.LOGGER.error(I18n.format("intention.check.error", sender, message), e);
+            }
 
             // For critical messages (starting with : or mentioning bot), respond despite error
             String lowerMessage = message.toLowerCase();
@@ -520,6 +532,20 @@ public class IntentionChecker {
             }
             Throwable cause = current.getCause();
             current = cause instanceof Exception ? (Exception) cause : null;
+        }
+        return false;
+    }
+
+    /** Logs 401 rejections loudly only once per session instead of a stack trace per message. */
+    private static final AtomicBoolean unauthorizedWarned = new AtomicBoolean(false);
+
+    private static boolean isUnauthorizedException(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof UnauthorizedException) {
+                return true;
+            }
+            current = current.getCause();
         }
         return false;
     }

@@ -60,6 +60,8 @@ public class ForgeMain {
     private static void setup(final FMLCommonSetupEvent event) {
         // Initialize config using ConfigLib
         Path configDir = FMLPaths.CONFIGDIR.get();
+        // Register the platform data directory (used by the SQLite long-term memory)
+        ServerChanCore.setDataDirectory(configDir.resolve("serverchan"));
         ServerChanConfigBase config = ConfigLoader.initialize(configDir);
 
         // Initialize the core with the base config

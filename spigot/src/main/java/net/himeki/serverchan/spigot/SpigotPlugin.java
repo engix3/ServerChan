@@ -33,6 +33,9 @@ public class SpigotPlugin extends JavaPlugin {
      * Initialize normal plugin mode
      */
     private void initializeNormalMode() {
+        // Register the platform data directory (used by the SQLite long-term memory)
+        ServerChanCore.setDataDirectory(getDataFolder().toPath());
+
         // Initialize config using ConfigLib
         ServerChanConfigBase config = ConfigLoader.initialize(getDataFolder().toPath());
 
@@ -46,6 +49,9 @@ public class SpigotPlugin extends JavaPlugin {
         // Initialize command executor
         SpigotCommandExecutor commandExecutor = new SpigotCommandExecutor(this);
         ServerChanCore.setCommandExecutor(commandExecutor);
+
+        // Initialize the server metrics provider (get_server_metrics tool)
+        ServerChanCore.setServerInfoProvider(new SpigotServerInfoProvider());
 
         // Register event listeners
         SpigotEventListener eventListener = new SpigotEventListener();

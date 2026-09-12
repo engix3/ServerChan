@@ -27,7 +27,7 @@ public class SpigotEventListener implements Listener {
         int permissionLevel = player.isOp() ? 4 : 0;
 
         // Note: Since this is an async event, we need to handle the server instance carefully
-        ServerChanCore.onChatMessage(playerName, message, permissionLevel);
+        ServerChanCore.onChatMessage(player.getUniqueId(), playerName, message, permissionLevel);
     }
 
     @EventHandler
