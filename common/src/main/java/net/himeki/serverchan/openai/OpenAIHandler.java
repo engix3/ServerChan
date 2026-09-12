@@ -67,7 +67,20 @@ public class OpenAIHandler {
     /**
      * Initialize or reset everything at startup.
      */
+    /**
+     * Initialize or reset everything at startup.
+     */
     public static void initializeOpenAI() {
+        initializeOpenAI(true);
+    }
+
+    /**
+     * Initialize or reset the OpenAI stack.
+     *
+     * @param resetConversationContext false keeps the ongoing conversation
+     *        (used by /serverchan reload so a config reload doesn't wipe the dialog)
+     */
+    public static void initializeOpenAI(boolean resetConversationContext) {
         // One concise warning at startup/reload instead of stack traces on every request
         if (!isApiKeyConfigured()) {
             ServerChanCore.LOGGER.warn("OpenAI API key is not configured (openai.apiKey in serverchan.yml) - ServerChan will stay silent until a key is set");
@@ -115,7 +128,9 @@ public class OpenAIHandler {
     }
 
         resetClient();
-        resetMessageContext();
+        if (resetConversationContext) {
+            resetMessageContext();
+        }
 
         // Initialize IntentionChecker if enabled
         if (ServerChanCore.CONFIG.useIntentionChecker) {
@@ -786,11 +801,11 @@ public class OpenAIHandler {
                         .append(result == null || result.trim().isEmpty() ? "(no output)" : result)
                         .append("\n\n");
 
-                // Broadcast the command execution message
+                // Broadcast the command execution message (no player nick - the bot executes it)
                 if (ServerChanCore.getMessageBroadcaster() != null) {
                     ServerChanCore.getMessageBroadcaster().broadcastMessage(
                             ServerChanCore.formatForChat(
-                                    I18n.format("handler.command.broadcast", sender, cleanCommand))
+                                    I18n.format("handler.command.broadcast", cleanCommand))
                     );
                 }
             } catch (Exception e) {
@@ -910,8 +925,9 @@ public class OpenAIHandler {
             ChatCompletionFunctionTool tool = ChatCompletionFunctionTool.builder()
                     .function(FunctionDefinition.builder()
                             .name("get_server_metrics")
-                            .description("Get live server metrics: TPS (1m/5m/15m), online players, "
-                                    + "JVM memory usage and your ping. Takes no arguments.")
+                            .description("Get live server data: TPS (1m/5m/15m), online players, "
+                                    + "world time of day / day number / weather, JVM memory usage and your ping. "
+                                    + "Takes no arguments. Prefer this over running /time query or /tps commands.")
                             .parameters(parameters)
                             .build())
                     .build();

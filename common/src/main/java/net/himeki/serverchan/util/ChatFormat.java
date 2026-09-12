@@ -2,6 +2,7 @@ package net.himeki.serverchan.util;
 
 import net.himeki.serverchan.ServerChanCore;
 
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -13,6 +14,12 @@ public final class ChatFormat {
     /** Standard legacy color/format codes that players and admins may write as &x. */
     private static final Pattern AMP_CODE = Pattern.compile("&([0-9a-fk-orA-FK-OR])");
 
+    /** Full hex colors as written by many plugins: &#RRGGBB -> native §x§R§R§G§G§B§B. */
+    private static final Pattern HEX_COLOR = Pattern.compile("&#([0-9a-fA-F]{6})");
+
+    /** Broken hex attempts like '&#c' or '&#ff' - drop the '#' so the legacy code still applies. */
+    private static final Pattern BROKEN_HEX_HASH = Pattern.compile("&#(?=[0-9a-fA-F])");
+
     /** Strips § sequences for prefix-duplicate detection. */
     private static final Pattern SECTION_CODES = Pattern.compile("§[0-9a-fk-orA-FK-ORxX]");
 
@@ -20,13 +27,35 @@ public final class ChatFormat {
 
     /**
      * Translates legacy '&' formatting codes into native '§' codes.
+     * Also understands full hex colors (&#RRGGBB) and repairs broken hex attempts
+     * like '&#c' (the model sometimes writes plugin-style hex instead of &c).
      * Unknown '&x' sequences are left untouched so player chat is not mangled.
      */
     public static String translateAmpCodes(String input) {
         if (input == null || input.indexOf('&') < 0) {
             return input;
         }
-        return AMP_CODE.matcher(input).replaceAll("§$1");
+        String result = translateHexColors(input);
+        result = BROKEN_HEX_HASH.matcher(result).replaceAll("&");
+        return AMP_CODE.matcher(result).replaceAll("§$1");
+    }
+
+    /** Java 8 compatible &#RRGGBB -> §x§R§R§G§G§B§B translation. */
+    private static String translateHexColors(String input) {
+        java.util.regex.Matcher matcher = HEX_COLOR.matcher(input);
+        if (!matcher.find()) {
+            return input;
+        }
+        StringBuffer result = new StringBuffer();
+        do {
+            StringBuilder code = new StringBuilder("§x");
+            for (char ch : matcher.group(1).toLowerCase(Locale.ROOT).toCharArray()) {
+                code.append('§').append(ch);
+            }
+            matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(code.toString()));
+        } while (matcher.find());
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     /** Removes all legacy § formatting codes from a string. */

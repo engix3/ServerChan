@@ -64,7 +64,7 @@
   "handler.function.unknown": "Unknown function: %s",
   "handler.command.log.command": "Command: ",
   "handler.command.log.result": "Result: ",
-  "handler.command.broadcast": "%s executed command: /%s",
+  "handler.command.broadcast": "executing command: /%s",
   "handler.command.error": "Error executing command '/%s': %s",
   "prompt.dev.easteregg": "Special: If the player is Hork_ or Grider_, treat them as onii-chan and make special reactions at appropriate times."
 }

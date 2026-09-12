@@ -12,6 +12,8 @@ import org.bukkit.permissions.PermissionAttachmentInfo;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.reflect.Method;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -23,6 +25,7 @@ import java.util.logging.Level;
  */
 public class SpigotCommandExecutor implements CommandExecutor {
     private final JavaPlugin plugin;
+    private volatile Method commandMapMethod;
 
     public SpigotCommandExecutor(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -40,8 +43,12 @@ public class SpigotCommandExecutor implements CommandExecutor {
         // Create a new buffer for this specific execution to avoid concurrency issues
         // Each command execution gets its own isolated buffer
         final StringBuffer outputBuffer = new StringBuffer();
+        final StringBuffer consoleBuffer = new StringBuffer();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
+            // Vanilla (Brigadier) feedback goes to the server console, not to the
+            // dispatching sender - capture the console log for the dispatch window
+            SpigotConsoleCapture consoleCapture = SpigotConsoleCapture.attach(consoleBuffer);
             try {
                 // Create sender with isolated buffer for this execution
                 CommandSender sender = new ServerChanCommandSender(outputBuffer, permissionLevel);
@@ -56,10 +63,52 @@ public class SpigotCommandExecutor implements CommandExecutor {
                     output = "Command failed: " + command;
                 }
 
+                // Plugin commands shadow vanilla ones (e.g. EssentialsX's /time has no 'query'
+                // subcommand, so vanilla-style arguments only produce a help screen). When the
+                // first attempt was useless, try the vanilla command directly, and as a last
+                // resort route it through "execute run", which resolves inside vanilla Brigadier.
+                if (!success || looksLikeUsageHelp(output)) {
+                    String name = command.startsWith("/") ? command.substring(1) : command;
+                    name = name.split(" ")[0].toLowerCase(Locale.ROOT);
+
+                    org.bukkit.command.Command vanilla = findVanillaCommand(name);
+                    if (vanilla != null) {
+                        StringBuffer vanillaBuffer = new StringBuffer();
+                        CommandSender vanillaSender = new ServerChanCommandSender(vanillaBuffer, permissionLevel);
+                        boolean vanillaSuccess = vanilla.execute(vanillaSender, name, splitArgs(command));
+                        String vanillaOutput = vanillaBuffer.toString().trim();
+                        if (vanillaSuccess && !vanillaOutput.isEmpty()) {
+                            output = vanillaOutput;
+                        }
+                    } else if (!name.isEmpty() && !name.contains(":")) {
+                        StringBuffer executeBuffer = new StringBuffer();
+                        CommandSender executeSender = new ServerChanCommandSender(executeBuffer, permissionLevel);
+                        // "execute run <cmd>" is parsed by vanilla Brigadier directly, so the
+                        // plugin shadow on the plain name is irrelevant here
+                        boolean executeSuccess = Bukkit.dispatchCommand(executeSender, "execute run " + command);
+                        String executeOutput = executeBuffer.toString().trim();
+                        if (executeSuccess && !executeOutput.isEmpty()) {
+                            output = executeOutput;
+                        }
+                    }
+                }
+
+                // Prefer the captured console output (it contains the real vanilla feedback);
+                // fall back to the sender buffer when the capture is unavailable or empty
+                String consoleOutput = consoleBuffer.toString().trim();
+                if (!consoleOutput.isEmpty()) {
+                    output = consoleOutput;
+                }
+
                 future.complete(output);
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Error executing command: " + command, e);
-                future.complete("Error: " + e.getMessage());
+                // Surface the root cause (e.g. Brigadier's "Incorrect argument..." text)
+                // to the model instead of the generic wrapper message
+                String message = rootCauseMessage(e);
+                plugin.getLogger().warning("Command '" + command + "' failed: " + message);
+                future.complete("Error: " + message);
+            } finally {
+                consoleCapture.detach();
             }
         });
 
@@ -67,9 +116,84 @@ public class SpigotCommandExecutor implements CommandExecutor {
             // Wait for command execution with timeout
             return future.get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Command execution timed out: " + command, e);
+            plugin.getLogger().warning("Command execution timed out: " + command);
             return "Command execution timed out";
         }
+    }
+
+    /** Strips the leading command name, returning only its arguments. */
+    private static String[] splitArgs(String command) {
+        String clean = command.startsWith("/") ? command.substring(1) : command;
+        String[] parts = clean.split(" ");
+        String[] args = new String[Math.max(0, parts.length - 1)];
+        System.arraycopy(parts, 1, args, 0, args.length);
+        return args;
+    }
+
+    private static String rootCauseMessage(Throwable error) {
+        String message = error.getMessage();
+        Throwable current = error.getCause();
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                message = current.getMessage();
+            }
+            current = current.getCause();
+        }
+        return message != null ? message : error.getClass().getSimpleName();
+    }
+
+    /** Localized "usage/help was printed instead of running" detection (vanilla + common plugins). */
+    private static boolean looksLikeUsageHelp(String output) {
+        if (output == null || output.isEmpty()) {
+            return false;
+        }
+        String lower = output.toLowerCase(Locale.ROOT);
+        return lower.contains("usage:")
+                || lower.contains("correct usage")
+                || lower.contains("справка по команде")
+                || lower.contains("использование:");
+    }
+
+    /**
+     * Finds the vanilla Brigadier command wrapper for a command name that a plugin has
+     * shadowed (e.g. EssentialsX's /time). Vanilla commands are registered as
+     * VanillaCommandWrapper and stay reachable in the command map even after a plugin
+     * takes over the plain name. Uses only the public CommandMap API - no internals.
+     */
+    private org.bukkit.command.Command findVanillaCommand(String name) {
+        if (name.isEmpty() || name.contains(":")) {
+            return null;
+        }
+        try {
+            org.bukkit.command.CommandMap map = getCommandMap();
+            if (map == null) {
+                return null;
+            }
+            org.bukkit.command.Command namespaced = map.getCommand("minecraft:" + name);
+            if (isVanillaWrapper(namespaced)) {
+                return namespaced;
+            }
+            org.bukkit.command.Command plain = map.getCommand(name);
+            if (isVanillaWrapper(plain)) {
+                return plain;
+            }
+        } catch (Throwable ignored) {
+            // Command map not accessible - direct vanilla fallback unavailable
+        }
+        return null;
+    }
+
+    private org.bukkit.command.CommandMap getCommandMap() throws Exception {
+        Method getter = commandMapMethod;
+        if (getter == null) {
+            getter = Bukkit.getServer().getClass().getMethod("getCommandMap");
+            commandMapMethod = getter;
+        }
+        return (org.bukkit.command.CommandMap) getter.invoke(Bukkit.getServer());
+    }
+
+    private static boolean isVanillaWrapper(org.bukkit.command.Command command) {
+        return command != null && command.getClass().getName().contains("VanillaCommandWrapper");
     }
 
     @Override

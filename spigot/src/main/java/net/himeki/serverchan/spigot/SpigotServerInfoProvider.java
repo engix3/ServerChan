@@ -52,6 +52,28 @@ public class SpigotServerInfoProvider implements ServerInfoProvider {
     }
 
     @Override
+    public List<net.himeki.serverchan.util.ServerInfoProvider.WorldInfo> getWorldsInfo() {
+        List<net.himeki.serverchan.util.ServerInfoProvider.WorldInfo> worlds = new ArrayList<>();
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            long timeOfDay = world.getTime();
+            long fullTime = world.getFullTime();
+            // Minecraft day starts at 06:00 (tick 0); 20 minutes real time per 24000 ticks
+            int hours = (int) ((timeOfDay / 1000L + 6L) % 24L);
+            int minutes = (int) ((timeOfDay % 1000L) * 60L / 1000L);
+            worlds.add(new net.himeki.serverchan.util.ServerInfoProvider.WorldInfo(
+                    world.getName(),
+                    timeOfDay,
+                    String.format("%02d:%02d", hours, minutes),
+                    fullTime,
+                    fullTime / 24000L,
+                    world.hasStorm(),
+                    world.isThundering()
+            ));
+        }
+        return worlds;
+    }
+
+    @Override
     public int getMaxPlayers() {
         return Bukkit.getMaxPlayers();
     }

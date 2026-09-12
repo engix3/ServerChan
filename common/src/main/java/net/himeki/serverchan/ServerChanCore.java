@@ -337,8 +337,10 @@ public class ServerChanCore {
      */
     public static String executeReload() {
         // Note: Config reload itself should be handled by platform-specific code
-        // This method handles the common logic after config is reloaded
-        OpenAIHandler.initializeOpenAI();
+        // This method handles the common logic after config is reloaded.
+        // The conversation context is intentionally preserved across reloads -
+        // only /serverchan reset wipes it.
+        OpenAIHandler.initializeOpenAI(false);
         return I18n.get("command.reload.success");
     }
 

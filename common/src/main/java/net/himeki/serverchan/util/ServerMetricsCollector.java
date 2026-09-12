@@ -25,10 +25,30 @@ public final class ServerMetricsCollector {
 
         root.add("tps", buildTps(info));
         root.add("players", buildPlayers(info, callerUuid));
+        root.add("worlds", buildWorlds(info));
         root.add("memory", buildMemory());
         root.addProperty("caller_ping_ms", callerPing(info, callerUuid));
 
         return root.toString();
+    }
+
+    private static com.google.gson.JsonArray buildWorlds(ServerInfoProvider info) {
+        com.google.gson.JsonArray worlds = new com.google.gson.JsonArray();
+        if (info == null) {
+            return worlds;
+        }
+        for (ServerInfoProvider.WorldInfo world : info.getWorldsInfo()) {
+            JsonObject w = new JsonObject();
+            w.addProperty("name", world.name);
+            w.addProperty("time_of_day", world.timeFormatted);
+            w.addProperty("time_ticks", world.timeOfDayTicks);
+            w.addProperty("day", world.day);
+            w.addProperty("full_time_ticks", world.fullTime);
+            w.addProperty("storming", world.storming);
+            w.addProperty("thundering", world.thundering);
+            worlds.add(w);
+        }
+        return worlds;
     }
 
     private static JsonObject buildTps(ServerInfoProvider info) {

@@ -73,7 +73,7 @@
   "handler.function.unknown": "Неизвестная функция: %s",
   "handler.command.log.command": "Команда: ",
   "handler.command.log.result": "Результат: ",
-  "handler.command.broadcast": "%s выполняет команду: /%s",
+  "handler.command.broadcast": "выполняет команду: /%s",
   "handler.command.error": "Ошибка выполнения команды '/%s': %s",
 
   "prompt.dev.easteregg": "Особое: если игрока зовут Hork_ или Grider_, считай его онии-чаном и реагируй соответствующе в подходящие моменты."

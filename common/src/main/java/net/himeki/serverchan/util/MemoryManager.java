@@ -26,7 +26,10 @@ import java.util.UUID;
 public final class MemoryManager {
 
     private static final String DRIVER_CLASS = "org.sqlite.JDBC";
-    private static final int MAX_FACTS_PER_PLAYER = 25;
+    /** How many facts per player are injected into the system prompt on each request. */
+    private static final int MAX_INJECTED_FACTS = 25;
+    /** Hard cap of stored facts per player - keeps memory.db from growing unbounded. */
+    private static final int MAX_STORED_FACTS_PER_PLAYER = 100;
 
     private static volatile boolean initialized = false;
     private static Connection connection;
@@ -108,11 +111,25 @@ public final class MemoryManager {
             ps.setString(4, value.trim());
             ps.setString(5, Timestamp.valueOf(LocalDateTime.now()).toString());
             ps.executeUpdate();
-            return true;
         } catch (Exception e) {
             ServerChanCore.LOGGER.error("Failed to save memory fact for {}", playerUuid, e);
             return false;
         }
+
+        // Keep only the newest MAX_STORED_FACTS_PER_PLAYER facts for this player,
+        // so a chatty model inventing endless unique keys can't bloat the database
+        String prune = "DELETE FROM player_facts WHERE player_uuid = ? AND key NOT IN " +
+                       "(SELECT key FROM player_facts WHERE player_uuid = ? " +
+                       "ORDER BY updated_at DESC, rowid DESC LIMIT ?)";
+        try (PreparedStatement ps = connection.prepareStatement(prune)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setString(2, playerUuid.toString());
+            ps.setInt(3, MAX_STORED_FACTS_PER_PLAYER);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            ServerChanCore.LOGGER.debug("Failed to prune memory facts for {}", playerUuid, e);
+        }
+        return true;
     }
 
     /**
@@ -127,7 +144,7 @@ public final class MemoryManager {
         }
 
         String sql = "SELECT key, value FROM player_facts WHERE player_uuid = ? " +
-                     "ORDER BY updated_at DESC LIMIT " + MAX_FACTS_PER_PLAYER;
+                     "ORDER BY updated_at DESC LIMIT " + MAX_INJECTED_FACTS;
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, playerUuid.toString());
             try (ResultSet rs = ps.executeQuery()) {
