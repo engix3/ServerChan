@@ -9,6 +9,7 @@ import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
 import com.openai.models.chat.completions.*;
 import net.himeki.serverchan.ServerChanCore;
+import net.himeki.serverchan.StatusIndicator;
 import net.himeki.serverchan.config.ServerChanConfigBase;
 import net.himeki.serverchan.i18n.I18n;
 import net.himeki.serverchan.util.MemoryManager;
@@ -533,6 +534,9 @@ public class OpenAIHandler {
         String finalResponse = null;
         boolean resetContextAfterThisRound = false;
 
+        showStatus(I18n.get("status.thinking"));
+
+        try {
         // 1) Call the model repeatedly until no more function calls.
         while (functionCallExists && !Thread.currentThread().isInterrupted()) {
             ServerChanCore.LOGGER.info(I18n.format("openai.request.starting", ServerChanCore.CONFIG.model));
@@ -602,22 +606,29 @@ public class OpenAIHandler {
                             break;
                         }
                         case "getservermetrics": {
+                            showStatus(I18n.get("status.metrics"));
                             result = ServerMetricsCollector.collect(senderUuid, sender);
                             break;
                         }
                         case "websearch": {
-                            result = SearXNGClient.search(parseStringArg(functionArgsJson, "query"));
+                            String query = parseStringArg(functionArgsJson, "query");
+                            showStatus(I18n.format("status.websearch",
+                                    query.length() > 60 ? query.substring(0, 60) + "..." : query));
+                            result = SearXNGClient.search(query);
                             break;
                         }
                         case "rememberfact": {
+                            showStatus(I18n.get("status.remember"));
                             result = handleRememberFact(senderUuid, sender, functionArgsJson);
                             break;
                         }
                         case "setreminder": {
+                            showStatus(I18n.get("status.reminder"));
                             result = handleSetReminder(senderUuid, sender, functionArgsJson);
                             break;
                         }
                         case "getplayerinfo": {
+                            showStatus(I18n.get("status.playerinfo"));
                             result = ServerMetricsCollector.collectPlayerInfo(
                                     parseStringArg(functionArgsJson, "player_name"));
                             break;
@@ -635,6 +646,9 @@ public class OpenAIHandler {
                         messageContext.add(toolMsg);
                     }
                 }
+
+                // Tool results are in - the model is thinking about the next step
+                showStatus(I18n.get("status.thinking"));
             } else {
                 // No function calls => final text from this model
                 functionCallExists = false;
@@ -669,6 +683,10 @@ public class OpenAIHandler {
         }
 
         return finalResponse;
+        } finally {
+            // The final answer (or error) is about to reach the chat - hide the status bar
+            clearStatus();
+        }
     }
 
 
@@ -808,6 +826,27 @@ public class OpenAIHandler {
     }
 
     /**
+     * Show what the AI is currently doing in the platform status indicator
+     * (action bar), respecting the config toggle. No-op when unavailable.
+     */
+    private static void showStatus(String text) {
+        if (ServerChanCore.CONFIG == null || !ServerChanCore.CONFIG.statusEnabled) {
+            return;
+        }
+        StatusIndicator status = ServerChanCore.getStatusIndicator();
+        if (status != null && status.isReady()) {
+            status.show(text);
+        }
+    }
+
+    private static void clearStatus() {
+        StatusIndicator status = ServerChanCore.getStatusIndicator();
+        if (status != null) {
+            status.clear();
+        }
+    }
+
+    /**
      * Execute a list of Minecraft commands as console and return their captured
      * console output to the model. The platform CommandExecutor is responsible
      * for buffering the command feedback (custom buffered CommandSender);
@@ -841,13 +880,8 @@ public class OpenAIHandler {
                         .append(result == null || result.trim().isEmpty() ? "(no output)" : result)
                         .append("\n\n");
 
-                // Broadcast the command execution message (no player nick - the bot executes it)
-                if (ServerChanCore.getMessageBroadcaster() != null) {
-                    ServerChanCore.getMessageBroadcaster().broadcastMessage(
-                            ServerChanCore.formatForChat(
-                                    I18n.format("handler.command.broadcast", cleanCommand))
-                    );
-                }
+                // Show the command execution in the status bar instead of chat
+                showStatus(I18n.format("status.command", "/" + cleanCommand));
             } catch (Exception e) {
                 resultBuilder
                         .append(I18n.format("handler.command.error", cleanCommand, e.getMessage()))
@@ -860,9 +894,7 @@ public class OpenAIHandler {
     }
 
     /** Upper bound for a single tool result so huge outputs don't blow up the context window. */
-    private static final int MAX_TOOL_RESULT_LENGTH = 4000;
-
-    private static String truncateForToolResult(String result) {
+    private static final int MAX_TOOL_RESULT_LENGTH = 4000;    private static String truncateForToolResult(String result) {
         String cleaned = net.himeki.serverchan.util.ChatFormat.stripColorCodes(result);
         if (cleaned.length() <= MAX_TOOL_RESULT_LENGTH) {
             return cleaned;

@@ -71,5 +71,12 @@
   "watchdog.recovered": "✦ 指標が正常に戻りました ✦",
   "reminder.fire": "⏰ %s、リマインダー: %s",
   "event.advancement": "%s が進捗を達成: %s",
+  "status.thinking": "✦ ネイロナ考えています...",
+  "status.command": "⚡ ネイロナがコマンドを実行中: %s",
+  "status.websearch": "⚡ ネイロナが検索中: %s",
+  "status.metrics": "⚡ ネイロナがサーバー指標を確認中...",
+  "status.remember": "⚡ ネイロナがメモリに記録中...",
+  "status.reminder": "⚡ ネイロナがリマインダーを設定中...",
+  "status.playerinfo": "⚡ ネイロナがプレイヤーを確認中...",
   "prompt.dev.easteregg": "特別：プレイヤーが Hork_ または Grider_ の場合、お兄ちゃんとして扱い、適切なタイミングで特別な反応をしてください。"
 }

@@ -142,6 +142,9 @@ public class ServerChanConfigBase {
     /** Minimum time between two alerts of the same kind (seconds). */
     public int watchdogCooldownSeconds = 300;
 
+    /** Show what the AI is doing (thinking / calling tools) in the action bar. */
+    public boolean statusEnabled = true;
+
     public boolean inheritCmdSourcePermission = true;
 
     public boolean enableDebugFileLogging = false;

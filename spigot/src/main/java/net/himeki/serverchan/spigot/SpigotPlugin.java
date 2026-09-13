@@ -53,6 +53,9 @@ public class SpigotPlugin extends JavaPlugin {
         // Initialize the server metrics provider (get_server_metrics tool)
         ServerChanCore.setServerInfoProvider(new SpigotServerInfoProvider());
 
+        // Initialize the status indicator (action bar showing what the AI is doing)
+        ServerChanCore.setStatusIndicator(new SpigotStatusIndicator(this));
+
         // Register event listeners
         SpigotEventListener eventListener = new SpigotEventListener();
         getServer().getPluginManager().registerEvents(eventListener, this);

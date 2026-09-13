@@ -27,6 +27,7 @@ public class ServerChanCore {
     private static MessageBroadcaster messageBroadcaster;
     private static CommandExecutor commandExecutor;
     private static volatile ServerInfoProvider serverInfoProvider;
+    private static volatile StatusIndicator statusIndicator;
     private static volatile boolean enabled = true;
     public static final java.util.List<String> executedCommandsForTesting = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
@@ -125,6 +126,20 @@ public class ServerChanCore {
      */
     public static ServerInfoProvider getServerInfoProvider() {
         return serverInfoProvider;
+    }
+
+    /**
+     * Set the platform status indicator (action bar showing what the AI is doing)
+     */
+    public static void setStatusIndicator(StatusIndicator indicator) {
+        statusIndicator = indicator;
+    }
+
+    /**
+     * Get the platform status indicator (may be null if the platform doesn't provide one)
+     */
+    public static StatusIndicator getStatusIndicator() {
+        return statusIndicator;
     }
 
     /**

@@ -71,5 +71,12 @@
   "watchdog.recovered": "✦ Metrics are back to normal ✦",
   "reminder.fire": "⏰ %s, reminder: %s",
   "event.advancement": "%s got the advancement: %s",
+  "status.thinking": "✦ Neirona is thinking...",
+  "status.command": "⚡ Neirona is running: %s",
+  "status.websearch": "⚡ Neirona is searching the web: %s",
+  "status.metrics": "⚡ Neirona is checking server metrics...",
+  "status.remember": "⚡ Neirona is writing to memory...",
+  "status.reminder": "⚡ Neirona is setting a reminder...",
+  "status.playerinfo": "⚡ Neirona is looking up players...",
   "prompt.dev.easteregg": "Special: If the player is Hork_ or Grider_, treat them as onii-chan and make special reactions at appropriate times."
 }

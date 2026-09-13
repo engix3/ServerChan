@@ -35,6 +35,10 @@ public class ServerChanYamlConfig {
               "Сторож - периодический мониторинг TPS/пингов с предупреждениями в чат"})
     public WatchdogConfig watchdog = new WatchdogConfig();
 
+    @Comment({"", "Status indicator - shows in the action bar what the AI is doing (thinking, running commands)",
+              "Индикатор статуса - показывает в action bar, что ИИ сейчас делает (думает, исполняет команды)"})
+    public StatusConfig status = new StatusConfig();
+
     @Comment({"", "Web search via a self-hosted SearXNG instance",
               "Веб-поиск через собственный инстанс SearXNG"})
     public WebSearchConfig webSearch = new WebSearchConfig();
@@ -233,6 +237,16 @@ public class ServerChanYamlConfig {
     }
 
     /**
+     * Status indicator configuration (action bar)
+     */
+    @Configuration
+    public static class StatusConfig {
+        @Comment({"", "Show what the AI is doing (thinking, running commands) in the action bar of all players",
+                  "Показывать всем игрокам в action bar, что ИИ сейчас делает (думает, исполняет команды)"})
+        public boolean enabled = true;
+    }
+
+    /**
      * Web search configuration (SearXNG)
      */
     @Configuration
@@ -342,6 +356,9 @@ public class ServerChanYamlConfig {
         base.watchdogPingThresholdMs = watchdog.pingThresholdMs;
         base.watchdogCheckIntervalSeconds = watchdog.checkIntervalSeconds;
         base.watchdogCooldownSeconds = watchdog.cooldownSeconds;
+
+        // Status indicator
+        base.statusEnabled = status.enabled;
 
         // Web search
         base.webSearchEnabled = webSearch.enabled;

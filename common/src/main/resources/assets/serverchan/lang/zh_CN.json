@@ -71,5 +71,12 @@
   "watchdog.recovered": "✦ 指标恢复正常 ✦",
   "reminder.fire": "⏰ %s，提醒：%s",
   "event.advancement": "%s 获得了进度：%s",
+  "status.thinking": "✦ 奈萝娜思考中...",
+  "status.command": "⚡ 奈萝娜正在执行命令：%s",
+  "status.websearch": "⚡ 奈萝娜正在搜索：%s",
+  "status.metrics": "⚡ 奈萝娜正在查看服务器指标...",
+  "status.remember": "⚡ 奈萝娜正在写入记忆...",
+  "status.reminder": "⚡ 奈萝娜正在设置提醒...",
+  "status.playerinfo": "⚡ 奈萝娜正在查看玩家...",
   "prompt.dev.easteregg": "特殊：如果玩家是 Hork_ 或 Grider_，视作欧尼酱适当时候作出特殊反应。"
 }
