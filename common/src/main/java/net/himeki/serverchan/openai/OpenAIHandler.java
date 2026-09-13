@@ -12,6 +12,7 @@ import net.himeki.serverchan.ServerChanCore;
 import net.himeki.serverchan.config.ServerChanConfigBase;
 import net.himeki.serverchan.i18n.I18n;
 import net.himeki.serverchan.util.MemoryManager;
+import net.himeki.serverchan.util.ReminderManager;
 import net.himeki.serverchan.util.SearXNGClient;
 import net.himeki.serverchan.util.ServerMetricsCollector;
 
@@ -612,6 +613,15 @@ public class OpenAIHandler {
                             result = handleRememberFact(senderUuid, sender, functionArgsJson);
                             break;
                         }
+                        case "setreminder": {
+                            result = handleSetReminder(senderUuid, sender, functionArgsJson);
+                            break;
+                        }
+                        case "getplayerinfo": {
+                            result = ServerMetricsCollector.collectPlayerInfo(
+                                    parseStringArg(functionArgsJson, "player_name"));
+                            break;
+                        }
                         default:
                             result = I18n.format("handler.function.unknown", functionName);
                             break;
@@ -747,6 +757,36 @@ public class OpenAIHandler {
             ServerChanCore.LOGGER.error("Failed to parse commands from JSON", e);
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Handle the set_reminder tool call: schedule a chat reminder for the player.
+     */
+    private static String handleSetReminder(UUID senderUuid, String sender, String functionArgsJson) {
+        double delay = parseDoubleArg(functionArgsJson, "delay_minutes");
+        String text = parseStringArg(functionArgsJson, "text");
+        if (Double.isNaN(delay)) {
+            return "Error: 'delay_minutes' argument is required";
+        }
+        return ReminderManager.schedule(senderUuid, sender, (int) Math.round(delay), text);
+    }
+
+    /**
+     * Parse a single numeric argument from a function call's JSON arguments.
+     * Returns NaN when the field is missing or not a number.
+     */
+    private static double parseDoubleArg(String functionArgsJson, String field) {
+        try {
+            JsonElement element = parseJsonString(functionArgsJson);
+            JsonObject rootObject = element.getAsJsonObject();
+            JsonElement value = rootObject.get(field);
+            if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                return value.getAsDouble();
+            }
+        } catch (Exception e) {
+            ServerChanCore.LOGGER.error("Failed to parse '{}' from function arguments JSON", field, e);
+        }
+        return Double.NaN;
     }
 
     /**
@@ -905,6 +945,16 @@ public class OpenAIHandler {
             paramsBuilder.addTool(RememberFactTool.class);
         } catch (Throwable t) {
             ServerChanCore.LOGGER.error("Failed to register RememberFactTool tool for structured outputs", t);
+        }
+        try {
+            paramsBuilder.addTool(SetReminderTool.class);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.error("Failed to register SetReminderTool tool for structured outputs", t);
+        }
+        try {
+            paramsBuilder.addTool(GetPlayerInfoTool.class);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.error("Failed to register GetPlayerInfoTool tool for structured outputs", t);
         }
     }
 

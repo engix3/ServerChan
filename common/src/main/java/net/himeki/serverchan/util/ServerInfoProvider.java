@@ -2,6 +2,7 @@ package net.himeki.serverchan.util;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -33,11 +34,55 @@ public interface ServerInfoProvider {
         }
     }
 
+    /** Snapshot of one online player's live state. */
+    class PlayerInfo {
+        public final String name;
+        public final UUID uuid;
+        public final String world;
+        public final double x;
+        public final double y;
+        public final double z;
+        public final double health;
+        public final int hunger;
+        public final String gamemode;
+        public final int pingMs;
+        public final double playtimeHours;
+
+        public PlayerInfo(String name, UUID uuid, String world, double x, double y, double z,
+                          double health, int hunger, String gamemode, int pingMs, double playtimeHours) {
+            this.name = name;
+            this.uuid = uuid;
+            this.world = world;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.health = health;
+            this.hunger = hunger;
+            this.gamemode = gamemode;
+            this.pingMs = pingMs;
+            this.playtimeHours = playtimeHours;
+        }
+    }
+
     /**
      * @return TPS averages [1m, 5m, 15m], or null if the platform cannot provide them.
      */
     default double[] getTps() {
         return null;
+    }
+
+    /**
+     * @return live info about an online player by exact name, or null if unknown/offline.
+     */
+    default PlayerInfo getPlayerInfo(String playerName) {
+        return null;
+    }
+
+    /**
+     * @return current ping (ms) of every online player, keyed by name.
+     */
+    default Map<String, Integer> getPlayerPingsByName() {
+        return Collections.emptyMap();
     }
 
     /**

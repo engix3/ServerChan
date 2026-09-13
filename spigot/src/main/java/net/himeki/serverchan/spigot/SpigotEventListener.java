@@ -2,6 +2,7 @@ package net.himeki.serverchan.spigot;
 
 import net.himeki.serverchan.ServerChanCore;
 import net.himeki.serverchan.i18n.I18n;
+import net.himeki.serverchan.util.ChatFormat;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,6 +10,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -60,6 +62,31 @@ public class SpigotEventListener implements Listener {
             // Pass to the core handler
             ServerChanCore.onGameEvent(key, deathMessage);
         }
+    }
+
+    @EventHandler
+    public void onPlayerAdvancement(PlayerAdvancementDoneEvent event) {
+        if (event.getAdvancement() == null) {
+            return;
+        }
+
+        // Key looks like "minecraft:story/mine_diamond"; recipe unlocks are noise
+        String key = event.getAdvancement().getKey().toString();
+        if (key.contains("recipes/")) {
+            return;
+        }
+
+        // Vanilla lang files store titles as "advancements.story.mine_diamond.title"
+        String titleKey = "advancements."
+                + key.substring(key.indexOf(':') + 1).replace('/', '.') + ".title";
+        String title = I18n.getMinecraftTranslation(titleKey);
+        if (title.equals(titleKey)) {
+            title = key; // no translation available - fall back to the raw key
+        }
+        title = ChatFormat.stripColorCodes(title);
+
+        ServerChanCore.onGameEvent("advancement." + key,
+                I18n.format("event.advancement", event.getPlayer().getName(), title));
     }
 
     /**

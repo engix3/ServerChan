@@ -102,6 +102,60 @@ public final class ServerMetricsCollector {
         return (info != null && callerUuid != null) ? info.getPlayerPing(callerUuid) : -1;
     }
 
+    /**
+     * Builds the JSON payload for the get_player_info tool.
+     * An empty/blank target name returns info about every online player.
+     */
+    public static String collectPlayerInfo(String targetName) {
+        ServerInfoProvider info = ServerChanCore.getServerInfoProvider();
+        if (info == null) {
+            return "{\"error\": \"no platform provider registered\"}";
+        }
+
+        String name = targetName != null ? targetName.trim() : "";
+        if (!name.isEmpty()) {
+            ServerInfoProvider.PlayerInfo player = info.getPlayerInfo(name);
+            if (player == null) {
+                JsonObject error = new JsonObject();
+                error.addProperty("error", "player not found or offline");
+                com.google.gson.JsonArray online = new com.google.gson.JsonArray();
+                for (String onlineName : info.getPlayerNames()) {
+                    online.add(onlineName);
+                }
+                error.add("online_players", online);
+                return error.toString();
+            }
+            return playerJson(player).toString();
+        }
+
+        com.google.gson.JsonArray players = new com.google.gson.JsonArray();
+        for (String onlineName : info.getPlayerNames()) {
+            ServerInfoProvider.PlayerInfo player = info.getPlayerInfo(onlineName);
+            if (player != null) {
+                players.add(playerJson(player));
+            }
+        }
+        JsonObject root = new JsonObject();
+        root.add("players", players);
+        return root.toString();
+    }
+
+    private static JsonObject playerJson(ServerInfoProvider.PlayerInfo player) {
+        JsonObject json = new JsonObject();
+        json.addProperty("name", player.name);
+        json.addProperty("uuid", player.uuid.toString());
+        json.addProperty("world", player.world);
+        json.addProperty("x", player.x);
+        json.addProperty("y", player.y);
+        json.addProperty("z", player.z);
+        json.addProperty("health", player.health);
+        json.addProperty("hunger", player.hunger);
+        json.addProperty("gamemode", player.gamemode);
+        json.addProperty("ping_ms", player.pingMs);
+        json.addProperty("playtime_hours", player.playtimeHours);
+        return json;
+    }
+
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
     }

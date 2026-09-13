@@ -2,7 +2,6 @@
   "bot.name": "Нейрона",
   "serverchan.startup": "Нейрона на связи~",
   "serverchan.config.reloaded": "Конфигурация Нейроны перезагружена",
-
   "intention.initialized": "IntentionChecker инициализирован: модель %s, длина контекста: %d, базовый URL: %s",
   "intention.check.entering": "Проверка намерения для отправителя: %s, длина сообщения: %d, игровое событие: %b, колбэк: %b",
   "intention.check.context.processing": "Обработка контекста: использовано %d сообщений из %d доступных (заданная длина контекста: %d)",
@@ -12,10 +11,8 @@
   "intention.check.will.not.respond": "[INTENTION] Не отвечаем - Вероятность: %d%% <= Порог: %d%% | Причина: %s",
   "intention.check.error": "Ошибка проверки намерения для сообщения от %s: %s",
   "intention.check.critical.detected": "Обнаружено критичное сообщение от %s: \"%s\" - отвечаем несмотря на сбой проверки",
-
   "intention.debug.saved": "Отладочная информация сохранена в %s",
   "intention.debug.save.failed": "Не удалось сохранить отладочную информацию в %s: %s",
-
   "intention.fastpath.starting": "Используется потоковая проверка намерения (fast path)",
   "intention.fastpath.stream.starting": "Fast path: запущена потоковая проверка намерения",
   "intention.fastpath.probability.extracted": "[FAST PATH] Вероятность извлечена за %dмс: %d%% %s Порог: %d%% - %s",
@@ -29,31 +26,25 @@
   "intention.fastpath.error": "Ошибка потоковой проверки намерения для сообщения от %s: %s",
   "intention.fastpath.fallback.warning": "Потоковая проверка намерения не удалась, откат к обычной проверке",
   "intention.fastpath.fallback.error": "Откат тоже не удался",
-
   "intention.parse.empty": "Пустой ответ от модели",
   "intention.parse.failed": "Не удалось разобрать JSON-ответ. Содержимое: %s",
   "intention.parse.attempts.failed": "Все попытки разбора JSON провалились. Создаётся ответ по умолчанию.",
   "intention.parse.missing.fields": "В JSON-ответе отсутствуют обязательные поля",
-
   "intention.prompt.analyze": "Проанализируй следующее сообщение и реши, требуется ли ответ:",
   "intention.prompt.format.fastpath": "\n\nФормат вывода: верни JSON-объект со следующими полями (важен порядок):\n{\"respond_probability\":number,\"reason\":string}\nВажно: сначала respond_probability, затем reason.",
   "intention.prompt.format.normal": "\n\nФормат вывода: верни JSON-объект со следующими полями:\n{\"reason\":string,\"respond_probability\":number}",
   "intention.prompt.bot.names": "Нейрона,Neirona,ServerChan",
-
   "intention.reason.error.critical": "Сбой проверки намерения - отвечаем на критичное сообщение",
   "intention.reason.error.default": "Ошибка проверки намерения",
   "intention.reason.parse.failed": "Не удалось разобрать ответ модели",
   "intention.reason.fastpath.early": "Fast path: досрочное решение",
   "intention.reason.fastpath.partial": "Fast path: частичный ответ",
   "intention.reason.fastpath.default": "Ответ fast path",
-
   "intention.operator.greater": ">",
   "intention.operator.lessequal": "<=",
   "intention.decision.will.trigger": "Досрочный ответ запускается!",
   "intention.decision.wont.respond": "Не отвечаем",
-
   "openai.request.starting": "Отправка запроса к модели: %s",
-
   "command.reload.success": "Конфигурация Нейроны перезагружена",
   "command.reset.success": "Контекст диалога Нейроны очищен",
   "command.kill.success": "Клиент OpenAI Нейроны перезапущен",
@@ -75,6 +66,10 @@
   "handler.command.log.result": "Результат: ",
   "handler.command.broadcast": "выполняет команду: /%s",
   "handler.command.error": "Ошибка выполнения команды '/%s': %s",
-
+  "watchdog.tps": "☠ TPS просел: %s (порог %s) — кто-то тащит чанки или сервер пыхтит",
+  "watchdog.ping": "⚡ Подозрительные пинги: %s ms (хуже всех — %s) — либо дудосят, либо у кого-то интернет с телефона ¯\\_(ツ)_/¯",
+  "watchdog.recovered": "✦ Показатели вернулись в норму ✦",
+  "reminder.fire": "⏰ %s, напоминаю: %s",
+  "event.advancement": "%s получил достижение: %s",
   "prompt.dev.easteregg": "Особое: если игрока зовут Hork_ или Grider_, считай его онии-чаном и реагируй соответствующе в подходящие моменты."
 }

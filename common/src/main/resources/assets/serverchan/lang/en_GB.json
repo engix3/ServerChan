@@ -66,5 +66,10 @@
   "handler.command.log.result": "Result: ",
   "handler.command.broadcast": "executing command: /%s",
   "handler.command.error": "Error executing command '/%s': %s",
+  "watchdog.tps": "☠ TPS dropped: %s (threshold %s) - someone is dragging chunks or the server is struggling",
+  "watchdog.ping": "⚡ Suspicious pings: %s ms (worst: %s) - either a DDoS or someone on hotel Wi-Fi ¯\\_(ツ)_/¯",
+  "watchdog.recovered": "✦ Metrics are back to normal ✦",
+  "reminder.fire": "⏰ %s, reminder: %s",
+  "event.advancement": "%s got the advancement: %s",
   "prompt.dev.easteregg": "Special: If the player is Hork_ or Grider_, treat them as onii-chan and make special reactions at appropriate times."
 }

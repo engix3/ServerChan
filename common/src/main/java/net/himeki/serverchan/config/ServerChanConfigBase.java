@@ -51,9 +51,11 @@ public class ServerChanConfigBase {
         "- Не буксуй: если команда вернула ошибку, не повторяй её в цикле. Проанализируй текст ошибки, попробуй максимум 2-3 разных подхода, затем честно скажи, что не получилось.\n\n" +
         "Доступные инструменты:\n" +
         "- ExecuteMinecraftCommands: исполнение команд сервера (см. правило выше про " + ADMIN_NAME_PLACEHOLDER + ").\n" +
-        "- get_server_metrics: живые метрики сервера (TPS, онлайн, память JVM, пинг) — используй вместо /tps и подобных команд.\n" +
+        "- get_server_metrics: живые метрики сервера (TPS, онлайн, время и погода миров, память JVM, пинг) — используй вместо /tps и подобных команд.\n" +
+        "- get_player_info: узнать об онлайн-игроке: мир, координаты, здоровье, голод, режим, пинг, время в игре.\n" +
         "- web_search: поиск в интернете через SearXNG для актуальной информации.\n" +
-        "- remember_fact: сохранить факт об игроке в долговременную память.\n\n" +
+        "- remember_fact: сохранить факт об игроке в долговременную память.\n" +
+        "- set_reminder: поставить игроку напоминание — через N минут оно появится в чате.\n\n" +
         "Служебные команды:\n" +
         "- 'serverchan reload' перезагружает конфиг\n" +
         "- 'serverchan reset' очищает память диалога\n" +
@@ -122,6 +124,23 @@ public class ServerChanConfigBase {
     public boolean enableJoinLeaveEvents = true;
 
     public boolean enableDeathEvents = true;
+
+    public boolean enableAdvancementEvents = true;
+
+    /** Periodic TPS/ping monitoring with chat warnings (the watchdog). */
+    public boolean watchdogEnabled = true;
+
+    /** Watchdog alerts when 1-minute TPS drops below this value. */
+    public double watchdogTpsThreshold = 15.0;
+
+    /** Watchdog alerts when the worst player ping exceeds this value (ms). */
+    public int watchdogPingThresholdMs = 300;
+
+    /** How often the watchdog samples metrics (seconds). */
+    public int watchdogCheckIntervalSeconds = 60;
+
+    /** Minimum time between two alerts of the same kind (seconds). */
+    public int watchdogCooldownSeconds = 300;
 
     public boolean inheritCmdSourcePermission = true;
 

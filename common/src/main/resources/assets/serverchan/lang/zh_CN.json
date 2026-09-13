@@ -66,5 +66,10 @@
   "handler.command.log.result": "结果：",
   "handler.command.broadcast": "正在执行指令：/%s",
   "handler.command.error": "执行指令 '/%s' 时出错：%s",
+  "watchdog.tps": "☠ TPS 下降：%s（阈值 %s）— 有人在大规模加载区块，服务器很吃力",
+  "watchdog.ping": "⚡ 可疑的延迟：%s ms（最差：%s）— 要么被攻击了，要么有人用的是手机热点 ¯\\_(ツ)_/¯",
+  "watchdog.recovered": "✦ 指标恢复正常 ✦",
+  "reminder.fire": "⏰ %s，提醒：%s",
+  "event.advancement": "%s 获得了进度：%s",
   "prompt.dev.easteregg": "特殊：如果玩家是 Hork_ 或 Grider_，视作欧尼酱适当时候作出特殊反应。"
 }

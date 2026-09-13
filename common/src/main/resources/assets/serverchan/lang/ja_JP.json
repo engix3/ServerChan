@@ -66,5 +66,10 @@
   "handler.command.log.result": "結果：",
   "handler.command.broadcast": "コマンドを実行中：/%s",
   "handler.command.error": "コマンド '/%s' の実行中にエラーが発生しました：%s",
+  "watchdog.tps": "☠ TPSが低下: %s (しきい値 %s) — 誰かがチャンクを大量ロード、サーバーが苦しい",
+  "watchdog.ping": "⚡ 不審なPing: %s ms (最悪: %s) — DDoSか、誰かがモバイル回線か ¯\\_(ツ)_/¯",
+  "watchdog.recovered": "✦ 指標が正常に戻りました ✦",
+  "reminder.fire": "⏰ %s、リマインダー: %s",
+  "event.advancement": "%s が進捗を達成: %s",
   "prompt.dev.easteregg": "特別：プレイヤーが Hork_ または Grider_ の場合、お兄ちゃんとして扱い、適切なタイミングで特別な反応をしてください。"
 }

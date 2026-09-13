@@ -7,7 +7,9 @@ import net.himeki.serverchan.openai.OpenAIHandler;
 import net.himeki.serverchan.util.ChatFormat;
 import net.himeki.serverchan.util.KotlinReflectionWorkaround;
 import net.himeki.serverchan.util.MemoryManager;
+import net.himeki.serverchan.util.ReminderManager;
 import net.himeki.serverchan.util.ServerInfoProvider;
+import net.himeki.serverchan.util.Watchdog;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
@@ -47,6 +49,9 @@ public class ServerChanCore {
         if (CONFIG.memoryEnabled) {
             MemoryManager.initialize(getDataDirectory());
         }
+
+        // Start the TPS/ping watchdog (it no-ops until the platform provider appears)
+        Watchdog.start();
 
         LOGGER.info(I18n.get("serverchan.startup"));
 
@@ -277,6 +282,10 @@ public class ServerChanCore {
             return CONFIG.enableDeathEvents;
         }
 
+        if (key.startsWith("advancement.")) {
+            return CONFIG.enableAdvancementEvents;
+        }
+
         return true;
     }
 
@@ -287,6 +296,8 @@ public class ServerChanCore {
         enabled = false;
         OpenAIHandler.shutdown();
         MemoryManager.shutdown();
+        ReminderManager.shutdown();
+        Watchdog.stop();
     }
 
     /**

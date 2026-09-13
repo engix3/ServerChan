@@ -3,6 +3,7 @@ package net.himeki.serverchan.spigot;
 import net.himeki.serverchan.util.ServerInfoProvider;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
+import org.bukkit.Statistic;
 import org.bukkit.entity.Player;
 
 import java.lang.reflect.Method;
@@ -71,6 +72,48 @@ public class SpigotServerInfoProvider implements ServerInfoProvider {
             ));
         }
         return worlds;
+    }
+
+    @Override
+    public java.util.Map<String, Integer> getPlayerPingsByName() {
+        java.util.Map<String, Integer> pings = new java.util.HashMap<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            pings.put(player.getName(), getPlayerPing(player.getUniqueId()));
+        }
+        return pings;
+    }
+
+    @Override
+    public net.himeki.serverchan.util.ServerInfoProvider.PlayerInfo getPlayerInfo(String playerName) {
+        if (playerName == null || playerName.trim().isEmpty()) {
+            return null;
+        }
+        Player player = Bukkit.getPlayerExact(playerName.trim());
+        if (player == null) {
+            return null;
+        }
+
+        double playtimeHours;
+        #if MC_VER >= MC_1_13
+        playtimeHours = player.getStatistic(Statistic.TOTAL_WORLD_TIME) / (20.0 * 3600.0);
+        #else
+        playtimeHours = player.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20.0 * 3600.0);
+        #endif
+
+        org.bukkit.Location location = player.getLocation();
+        return new net.himeki.serverchan.util.ServerInfoProvider.PlayerInfo(
+                player.getName(),
+                player.getUniqueId(),
+                player.getWorld().getName(),
+                Math.round(location.getX() * 10.0) / 10.0,
+                Math.round(location.getY() * 10.0) / 10.0,
+                Math.round(location.getZ() * 10.0) / 10.0,
+                Math.round(player.getHealth() * 10.0) / 10.0,
+                player.getFoodLevel(),
+                player.getGameMode().name(),
+                getPlayerPing(player.getUniqueId()),
+                Math.round(playtimeHours * 10.0) / 10.0
+        );
     }
 
     @Override

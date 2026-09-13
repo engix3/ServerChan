@@ -31,6 +31,10 @@ public class ServerChanYamlConfig {
               "Настройки отслеживания игровых событий"})
     public EventsConfig events = new EventsConfig();
 
+    @Comment({"", "Watchdog - periodic TPS/ping monitoring with chat warnings",
+              "Сторож - периодический мониторинг TPS/пингов с предупреждениями в чат"})
+    public WatchdogConfig watchdog = new WatchdogConfig();
+
     @Comment({"", "Web search via a self-hosted SearXNG instance",
               "Веб-поиск через собственный инстанс SearXNG"})
     public WebSearchConfig webSearch = new WebSearchConfig();
@@ -195,11 +199,37 @@ public class ServerChanYamlConfig {
 
         @Comment({"", "Monitor player advancement/achievement events",
                   "Отслеживать прогресс/достижения игроков"})
-        public boolean advancementEvents = false;
+        public boolean advancementEvents = true;
 
         @Comment({"", "Monitor and process chat messages",
                   "Отслеживать и обрабатывать сообщения чата"})
         public boolean chatEvents = true;
+    }
+
+    /**
+     * Watchdog configuration (TPS/ping monitoring)
+     */
+    @Configuration
+    public static class WatchdogConfig {
+        @Comment({"", "Enable the watchdog: it warns in chat when TPS drops or pings spike",
+                  "Включить сторожа: он ругается в чат при просадке TPS или скачках пингов"})
+        public boolean enabled = true;
+
+        @Comment({"", "Alert when 1-minute TPS drops below this value",
+                  "Тревога, когда минутный TPS падает ниже этого значения"})
+        public double tpsThreshold = 15.0;
+
+        @Comment({"", "Alert when the worst player ping exceeds this value (ms)",
+                  "Тревога, когда самый плохой пинг превышает это значение (мс)"})
+        public int pingThresholdMs = 300;
+
+        @Comment({"", "How often to sample metrics (seconds)",
+                  "Как часто снимать метрики (секунды)"})
+        public int checkIntervalSeconds = 60;
+
+        @Comment({"", "Minimum time between two alerts of the same kind (seconds)",
+                  "Минимальная пауза между двумя тревогами одного типа (секунды)"})
+        public int cooldownSeconds = 300;
     }
 
     /**
@@ -304,6 +334,14 @@ public class ServerChanYamlConfig {
         base.enableGameEvents = events.enabled;
         base.enableJoinLeaveEvents = events.joinLeaveEvents;
         base.enableDeathEvents = events.deathEvents;
+        base.enableAdvancementEvents = events.advancementEvents;
+
+        // Watchdog
+        base.watchdogEnabled = watchdog.enabled;
+        base.watchdogTpsThreshold = watchdog.tpsThreshold;
+        base.watchdogPingThresholdMs = watchdog.pingThresholdMs;
+        base.watchdogCheckIntervalSeconds = watchdog.checkIntervalSeconds;
+        base.watchdogCooldownSeconds = watchdog.cooldownSeconds;
 
         // Web search
         base.webSearchEnabled = webSearch.enabled;
