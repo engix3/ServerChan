@@ -132,19 +132,13 @@ public class SpigotStatusIndicator implements StatusIndicator {
         try {
             Class<?> serializerClass = Class.forName(
                     "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer");
-            adventureSerializer = serializerClass.getField("legacySection").get(null);
+            // legacySection() is a static METHOD (not a field) in Adventure 4.x
+            adventureSerializer = serializerClass.getMethod("legacySection").invoke(null);
             adventureDeserialize = serializerClass.getMethod("deserialize", String.class);
-            for (Method method : samplePlayer.getClass().getMethods()) {
-                if (method.getName().equals("sendActionBar")
-                        && method.getParameterCount() == 1
-                        && method.getParameterTypes()[0].getName()
-                                .equals("net.kyori.adventure.text.Component")) {
-                    adventureSendActionBar = method;
-                    break;
-                }
-            }
-        } catch (Throwable ignored) {
-            // Adventure not available
+            Class<?> componentClass = Class.forName("net.kyori.adventure.text.Component");
+            adventureSendActionBar = samplePlayer.getClass().getMethod("sendActionBar", componentClass);
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.debug("Adventure action bar unavailable: {}", t.toString());
         }
 
         // Fallback: legacy Spigot path (Player.Spigot#sendMessage(ChatMessageType, BaseComponent...))
