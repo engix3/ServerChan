@@ -1,5 +1,6 @@
 package net.himeki.serverchan.spigot;
 
+import net.himeki.serverchan.ServerChanCore;
 import net.himeki.serverchan.StatusIndicator;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -14,10 +15,10 @@ import java.lang.reflect.Method;
  * place while the AI thinks or runs tools, and is cleared once the answer is
  * broadcast - chat stays clean.
  *
- * Action bar sending goes through reflection: the Bukkit call
- * (Player.Spigot#sendMessage(ChatMessageType, BaseComponent...)) needs
- * bungeecord-chat classes that are intentionally not on the compile classpath.
- * On servers without the reflection targets the indicator degrades to a no-op.
+ * Action bar sending goes through reflection. Modern Paper builds expose
+ * Player#sendActionBar(Adventure Component); older ones use the legacy
+ * Player.Spigot#sendMessage(ChatMessageType, BaseComponent...) path. Both are
+ * tried; if neither exists the indicator logs a warning and becomes a no-op.
  */
 public class SpigotStatusIndicator implements StatusIndicator {
 
@@ -29,10 +30,12 @@ public class SpigotStatusIndicator implements StatusIndicator {
 
     // Lazily resolved reflection handles
     private static volatile boolean reflectionResolved = false;
-    private static Object actionBarMessageType;
-    private static Class<?> baseComponentClass;
-    private static Method fromLegacyMethod;
+    private static Method adventureSendActionBar;
+    private static Object adventureSerializer;
+    private static Method adventureDeserialize;
     private static Method spigotSendMessage;
+    private static Object actionBarMessageType;
+    private static Method fromLegacyMethod;
 
     public SpigotStatusIndicator(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -108,37 +111,73 @@ public class SpigotStatusIndicator implements StatusIndicator {
             if (!reflectionResolved) {
                 resolveReflection(player);
             }
-            if (spigotSendMessage == null) {
-                return;
+            if (adventureSendActionBar != null) {
+                Object component = adventureDeserialize.invoke(adventureSerializer, text);
+                adventureSendActionBar.invoke(player, component);
+            } else if (spigotSendMessage != null) {
+                Object components = fromLegacyMethod.invoke(null, text);
+                spigotSendMessage.invoke(player.spigot(), actionBarMessageType, components);
             }
-            Object components = fromLegacyMethod.invoke(null, text);
-            spigotSendMessage.invoke(player.spigot(), actionBarMessageType, components);
-        } catch (Throwable ignored) {
-            // No action bar on this platform - status silently unavailable
+        } catch (Throwable t) {
+            ServerChanCore.LOGGER.debug("Status indicator send failed", t);
         }
     }
 
-    private static synchronized void resolveReflection(Player samplePlayer) throws Exception {
+    private static synchronized void resolveReflection(Player samplePlayer) {
         if (reflectionResolved) {
             return;
         }
-        Class<?> chatMessageType = Class.forName("net.md_5.bungee.api.chat.ChatMessageType");
-        actionBarMessageType = chatMessageType.getField("ACTION_BAR").get(null);
-        baseComponentClass = Class.forName("net.md_5.bungee.api.chat.BaseComponent");
-        Class<?> textComponentClass = Class.forName("net.md_5.bungee.api.chat.TextComponent");
-        fromLegacyMethod = textComponentClass.getMethod("fromLegacyText", String.class);
 
-        Object spigot = samplePlayer.spigot();
-        for (Method method : spigot.getClass().getMethods()) {
-            if (method.getName().equals("sendMessage")
-                    && method.getParameterCount() == 2
-                    && method.getParameterTypes()[0] == chatMessageType
-                    && method.getParameterTypes()[1].isArray()
-                    && method.getParameterTypes()[1].getComponentType() == baseComponentClass) {
-                spigotSendMessage = method;
-                break;
+        // Preferred: Paper's native Adventure API (Player#sendActionBar(Component))
+        try {
+            Class<?> serializerClass = Class.forName(
+                    "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer");
+            adventureSerializer = serializerClass.getField("legacySection").get(null);
+            adventureDeserialize = serializerClass.getMethod("deserialize", String.class);
+            for (Method method : samplePlayer.getClass().getMethods()) {
+                if (method.getName().equals("sendActionBar")
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0].getName()
+                                .equals("net.kyori.adventure.text.Component")) {
+                    adventureSendActionBar = method;
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {
+            // Adventure not available
+        }
+
+        // Fallback: legacy Spigot path (Player.Spigot#sendMessage(ChatMessageType, BaseComponent...))
+        if (adventureSendActionBar == null) {
+            try {
+                Class<?> chatMessageType = Class.forName("net.md_5.bungee.api.chat.ChatMessageType");
+                actionBarMessageType = chatMessageType.getField("ACTION_BAR").get(null);
+                Class<?> baseComponentClass = Class.forName("net.md_5.bungee.api.chat.BaseComponent");
+                fromLegacyMethod = Class.forName("net.md_5.bungee.api.chat.TextComponent")
+                        .getMethod("fromLegacyText", String.class);
+                Object spigot = samplePlayer.spigot();
+                for (Method method : spigot.getClass().getMethods()) {
+                    if (method.getName().equals("sendMessage")
+                            && method.getParameterCount() == 2
+                            && method.getParameterTypes()[0] == chatMessageType
+                            && method.getParameterTypes()[1].isArray()
+                            && method.getParameterTypes()[1].getComponentType() == baseComponentClass) {
+                        spigotSendMessage = method;
+                        break;
+                    }
+                }
+            } catch (Throwable ignored) {
+                // Legacy path not available either
             }
         }
+
         reflectionResolved = true;
+        if (adventureSendActionBar != null) {
+            ServerChanCore.LOGGER.info("Status indicator: using Adventure sendActionBar");
+        } else if (spigotSendMessage != null) {
+            ServerChanCore.LOGGER.info("Status indicator: using legacy Spigot action bar");
+        } else {
+            ServerChanCore.LOGGER.warn("Status indicator unavailable: no action bar method found on this server build");
+        }
     }
 }
